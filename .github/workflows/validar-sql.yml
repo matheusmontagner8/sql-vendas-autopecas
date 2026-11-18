@@ -1,0 +1,33 @@
+name: Validar SQL
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  validar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Instalar o SQLite
+        run: sudo apt-get update -q && sudo apt-get install -y -q sqlite3
+
+      - name: Conferir se 02_dados.sql está igual ao gerado pelo script
+        run: |
+          python scripts/gerar_dados.py
+          git diff --exit-code sql/02_dados.sql
+
+      - name: Executar os scripts em ordem
+        run: |
+          for arquivo in sql/01_schema.sql sql/02_dados.sql sql/03_views.sql sql/04_consultas.sql; do
+            echo "Executando $arquivo"
+            sqlite3 -bail vendas.db < "$arquivo" > /dev/null
+          done
+
+      - name: Conferir chaves estrangeiras
+        run: test -z "$(sqlite3 vendas.db 'PRAGMA foreign_key_check;')"
