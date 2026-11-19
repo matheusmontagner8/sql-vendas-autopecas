@@ -110,6 +110,7 @@ ORDER BY margem DESC;
 
 -- -------------------------------------------------------------
 -- 6. Quem foi o melhor vendedor em cada trimestre?
+--    (2026-T4 está incompleto: a base vai só até outubro)
 --    Técnicas: RANK() OVER (PARTITION BY ...), filtro sobre a janela
 -- -------------------------------------------------------------
 WITH por_trimestre AS (
@@ -138,21 +139,26 @@ ORDER BY trimestre;
 -- -------------------------------------------------------------
 -- 7. Quais clientes estão sem comprar há mais de 90 dias?
 --    (lista para a equipe de vendas tentar recuperar)
---    Técnicas: subconsulta escalar, julianday(), HAVING
+--    Técnicas: CTE, subconsulta escalar, julianday()
 -- -------------------------------------------------------------
-SELECT
-    c.nome,
-    c.tipo,
-    c.cidade,
-    MAX(r.data_pedido) AS ultima_compra,
-    CAST(julianday((SELECT MAX(data_pedido) FROM pedidos)) - julianday(MAX(r.data_pedido)) AS INTEGER) AS dias_sem_comprar,
-    COUNT(*)                   AS pedidos,
-    ROUND(SUM(r.valor_total), 2) AS total_comprado
-FROM vw_pedidos_resumo AS r
-JOIN clientes AS c ON c.id_cliente = r.id_cliente
-WHERE r.status = 'FATURADO'
-GROUP BY c.id_cliente, c.nome, c.tipo, c.cidade
-HAVING dias_sem_comprar > 90
+WITH compras AS (
+    SELECT
+        c.nome,
+        c.tipo,
+        c.cidade,
+        MAX(r.data_pedido) AS ultima_compra,
+        CAST(julianday((SELECT MAX(data_pedido) FROM pedidos))
+             - julianday(MAX(r.data_pedido)) AS INTEGER) AS dias_sem_comprar,
+        COUNT(*)                     AS pedidos,
+        ROUND(SUM(r.valor_total), 2) AS total_comprado
+    FROM vw_pedidos_resumo AS r
+    JOIN clientes AS c ON c.id_cliente = r.id_cliente
+    WHERE r.status = 'FATURADO'
+    GROUP BY c.id_cliente, c.nome, c.tipo, c.cidade
+)
+SELECT *
+FROM compras
+WHERE dias_sem_comprar > 90
 ORDER BY total_comprado DESC;
 
 
