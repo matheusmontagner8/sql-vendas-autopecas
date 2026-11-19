@@ -31,3 +31,12 @@ jobs:
 
       - name: Conferir chaves estrangeiras
         run: test -z "$(sqlite3 vendas.db 'PRAGMA foreign_key_check;')"
+
+      - name: Rodar os testes de qualidade dos dados
+        run: |
+          problemas="$(sqlite3 -header -column vendas.db < sql/05_validacoes.sql)"
+          if [ -n "$problemas" ]; then
+            echo "$problemas"
+            exit 1
+          fi
+          echo "Nenhum problema encontrado."
