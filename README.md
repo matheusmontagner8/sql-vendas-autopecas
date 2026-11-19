@@ -9,12 +9,15 @@ Trabalho com um sistema ERP para o ramo de autopeças. Montei este projeto para 
 
 ## A base em números
 
-| Tabela | Linhas | | Indicador | Valor |
-| --- | ---: | --- | --- | ---: |
-| `pedidos` | 1.560 | | Faturamento (pedidos faturados) | R$ 1,06 milhão |
-| `itens_pedido` | 4.023 | | Margem bruta média | 38,2% |
-| `clientes` | 80 | | Crescimento jan–out 2026 vs. 2025 | +19,5% |
-| `produtos` | 36 | | Participação das oficinas (PJ) | 82% |
+| Indicador | Valor |
+| --- | ---: |
+| Pedidos (faturados + cancelados) | 1.560 |
+| Itens de pedido | 4.023 |
+| Clientes / produtos / vendedores | 80 / 36 / 5 |
+| Faturamento (pedidos faturados) | R$ 1,06 milhão |
+| Margem bruta média | 38,2% |
+| Crescimento jan–out 2026 vs. 2025 | +19,5% |
+| Participação das oficinas (PJ) no faturamento | 82% |
 
 ## Modelo de dados
 
@@ -27,6 +30,21 @@ erDiagram
     pedidos      ||--|{ itens_pedido : contem
     produtos     ||--o{ itens_pedido : "aparece em"
 
+    categorias {
+        int id_categoria PK
+        text nome UK
+    }
+    fornecedores {
+        int id_fornecedor PK
+        text razao_social
+        text cidade
+        text uf
+    }
+    vendedores {
+        int id_vendedor PK
+        text nome
+        date data_admissao
+    }
     produtos {
         int id_produto PK
         text codigo UK
@@ -77,13 +95,22 @@ erDiagram
 | [`sql/02_dados.sql`](sql/02_dados.sql) | Carga dos dados fictícios |
 | [`sql/03_views.sql`](sql/03_views.sql) | Views de itens vendidos e de resumo por pedido |
 | [`sql/04_consultas.sql`](sql/04_consultas.sql) | As 11 perguntas de negócio |
+| [`sql/05_validacoes.sql`](sql/05_validacoes.sql) | Testes de qualidade dos dados |
 | [`scripts/gerar_dados.py`](scripts/gerar_dados.py) | Script Python que gera o `02_dados.sql` |
 
-A cada envio de código, o **GitHub Actions** executa os quatro scripts num banco novo e confere as chaves estrangeiras. Se algum SQL quebrar, o selo do topo fica vermelho.
+## Testes automáticos
+
+A cada envio de código, o **GitHub Actions** cria um banco novo, executa os scripts em ordem e roda os testes de qualidade do `05_validacoes.sql`. Se algum SQL quebrar ou algum teste encontrar problema, o selo do topo fica vermelho.
+
+Os testes conferem, por exemplo:
+
+- se existe pedido sem itens, ou feito antes do cadastro do cliente ou da admissão do vendedor;
+- se algum item foi vendido abaixo do custo;
+- se as duas views chegam ao mesmo faturamento total, centavo por centavo.
 
 ## Como executar
 
-**Sem instalar nada:** abra o [sqliteonline.com](https://sqliteonline.com/), cole o conteúdo de cada arquivo da pasta `sql/` na ordem (01 → 04) e clique em **Run**.
+**Sem instalar nada:** abra o [sqliteonline.com](https://sqliteonline.com/), cole o conteúdo de cada arquivo da pasta `sql/` na ordem (01 → 05) e clique em **Run**.
 
 **No computador:** com o [DB Browser for SQLite](https://sqlitebrowser.org/), crie um banco novo e, na aba **Executar SQL**, rode os arquivos na ordem. Pelo terminal:
 
@@ -92,6 +119,7 @@ sqlite3 vendas.db < sql/01_schema.sql
 sqlite3 vendas.db < sql/02_dados.sql
 sqlite3 vendas.db < sql/03_views.sql
 sqlite3 -header -column vendas.db < sql/04_consultas.sql
+sqlite3 -header -column vendas.db < sql/05_validacoes.sql   # vazio = tudo certo
 ```
 
 ## Perguntas e o que a base mostra
@@ -104,7 +132,7 @@ sqlite3 -header -column vendas.db < sql/04_consultas.sql
 | 4 | Curva ABC de produtos | soma acumulada com janela |
 | 5 | Qual categoria dá mais margem? | agregação, margem % |
 | 6 | Quem foi o melhor vendedor de cada trimestre? | `RANK() OVER (PARTITION BY)` |
-| 7 | Quais clientes estão sem comprar há mais de 90 dias? | subconsulta, `julianday()`, `HAVING` |
+| 7 | Quais clientes estão sem comprar há mais de 90 dias? | CTE, subconsulta, `julianday()` |
 | 8 | Oficinas (PJ) compram mais que pessoa física? | CTE, agregação em dois níveis |
 | 9 | Quais produtos precisam de reposição urgente? | `LEFT JOIN` com subconsulta, `COALESCE` |
 | 10 | Alguma forma de pagamento cancela mais? | taxa com agregação condicional |
@@ -116,17 +144,17 @@ Alguns resultados:
 
 | tipo | clientes | pedidos | faturamento | ticket médio | pedidos por cliente |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| PF | 49 | 558 | R$ 190.681,17 | R$ 341,72 | 11,4 |
-| PJ | 30 | 922 | R$ 867.565,01 | R$ 940,96 | 30,7 |
+| PF | 49 | 558 | R$ 190.681,20 | R$ 341,72 | 11,4 |
+| PJ | 30 | 922 | R$ 867.564,80 | R$ 940,96 | 30,7 |
 
 **Boleto cancela 3 vezes mais que Pix (pergunta 10).**
 
 | forma de pagamento | pedidos | cancelados | taxa | valor cancelado |
 | --- | ---: | ---: | ---: | ---: |
-| BOLETO | 276 | 29 | 10,5% | R$ 33.329,10 |
-| CARTAO | 516 | 24 | 4,7% | R$ 18.422,53 |
+| BOLETO | 276 | 29 | 10,5% | R$ 33.329,09 |
+| CARTAO | 516 | 24 | 4,7% | R$ 18.422,51 |
 | DINHEIRO | 132 | 5 | 3,8% | R$ 1.978,45 |
-| PIX | 636 | 22 | 3,5% | R$ 12.978,25 |
+| PIX | 636 | 22 | 3,5% | R$ 12.978,26 |
 
 **O produto mais vendido está quase sem estoque (pergunta 9).** O óleo 5W30 é o item que mais fatura (pergunta 3), mas tem 5 unidades em estoque contra 221 vendidas nos últimos 90 dias. A consulta lista 10 produtos abaixo do mínimo, do mais vendido para o menos vendido.
 
@@ -140,17 +168,17 @@ Alguns resultados:
 
 | segmento | clientes | dias desde a última compra (média) | pedidos (média) | faturamento |
 | --- | ---: | ---: | ---: | ---: |
-| 1. Campeões | 21 | 9 | 32,0 | R$ 623.326,00 |
-| 2. Novos ou ocasionais | 13 | 13 | 11,1 | R$ 46.435,76 |
-| 3. Em risco (compravam muito) | 13 | 92 | 25,8 | R$ 273.389,55 |
-| 4. Pouco engajados | 32 | 106 | 10,3 | R$ 115.094,87 |
+| 1. Campeões | 21 | 9 | 32,0 | R$ 623.325,85 |
+| 2. Novos ou ocasionais | 13 | 13 | 11,1 | R$ 46.435,75 |
+| 3. Em risco (compravam muito) | 13 | 92 | 25,8 | R$ 273.389,51 |
+| 4. Pouco engajados | 32 | 106 | 10,3 | R$ 115.094,89 |
 
 ## Limitações
 
 - Os dados são sintéticos. Os padrões (sazonalidade, crescimento, cancelamentos) foram definidos no script para que as consultas tenham algo a mostrar.
 - A margem usa o custo atual do produto, porque a base não guarda histórico de custo.
 - Parte do crescimento de 2026 vem do reajuste de 6% na tabela de preços. Uma análise de volume deve comparar unidades vendidas, e não só valores.
-- O SQLite foi escolhido para que qualquer pessoa rode o projeto sem instalar um servidor. As consultas usam SQL padrão (`JOIN`, CTE, funções de janela); só as funções de data (`strftime`, `julianday`, `date`) mudariam em PostgreSQL ou SQL Server.
+- O SQLite foi escolhido para que qualquer pessoa rode o projeto sem instalar um servidor. As consultas usam SQL padrão (`JOIN`, CTE, funções de janela). Para levar a PostgreSQL ou SQL Server, mudariam as funções de data (`strftime`, `julianday`, `date`) e, no SQL Server, o `LIMIT` (que vira `TOP`).
 
 ---
 
